@@ -1,7 +1,9 @@
 {
   "name": "light",
   "bg": "#f4f5f7",
+  "card": "#ffffff",
   "fg": "#1b1e24",
+  "muted": "#5b6472",
   "accent": "#2b7fff",
   "font": "Segoe UI",
   "radius": 10,
