@@ -1,0 +1,9 @@
+{
+  "name": "light",
+  "bg": "#f4f5f7",
+  "fg": "#1b1e24",
+  "accent": "#2b7fff",
+  "font": "Segoe UI",
+  "radius": 10,
+  "transparency": 1.0
+}

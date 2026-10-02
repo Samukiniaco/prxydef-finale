@@ -1,0 +1,29 @@
+# LOCAL-ONLY: regras da IA, nunca sobe pro GitHub
+AGENTS.md
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.env
+*.egg-info/
+.pytest_cache/
+
+# Build / dist
+build/
+dist/
+*.exe
+*.spec
+
+# Config local do usuário (temas pessoais, etc - manter exemplos versionados, resto local)
+config.local.json
+themes/custom_*.json
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log

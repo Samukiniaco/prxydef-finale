@@ -1,0 +1,9 @@
+{
+  "name": "dark",
+  "bg": "#1b1e24",
+  "fg": "#e8eaf0",
+  "accent": "#4da3ff",
+  "font": "Segoe UI",
+  "radius": 10,
+  "transparency": 0.95
+}
