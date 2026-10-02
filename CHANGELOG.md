@@ -10,6 +10,13 @@ Regra de versionamento do projeto:
 
 ---
 
+## [0.1.0] - 2026-10-02
+### Added
+- UI completa em PySide6: Painel (status + ligar/desligar + atalhos), Navegador interno (voltar/avançar), Config (DoH, porta, upstream + temas em tempo real claro/escuro, import/export), Diagnóstico (sites personalizáveis, DNS sistema/DoH, checagem de bloqueio).
+- Proxy local HTTP/CONNECT real em 127.0.0.1:porta (thread daemon + asyncio) com fragmentação de ClientHello (DPI-bypass user-mode).
+- DoH real (Cloudflare/Google/Quad9) com cache local + medição de latência.
+- Temas `dark.json`/`light.json` expandidos (card, muted, transparency).
+
 ## [0.0.0] - 2026-10-02
 ### Added
 - Estrutura inicial do repo: planejamento, gitignore (com AGENTS.md local), VERSION, CHANGELOG, esqueleto src/core + ui.
