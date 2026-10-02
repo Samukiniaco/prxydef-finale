@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 CONFIG_PATH = Path(__file__).resolve().parents[2] / "config.local.json"
+
+DEFAULT_HOSTS = ["google.com", "youtube.com", "discord.com"]
 
 
 @dataclass
@@ -16,23 +18,27 @@ class Config:
     doh_provider: str = "cloudflare"  # cloudflare | google | quad9
     theme: str = "dark"
     upstream_enabled: bool = False
+    test_hosts: list[str] = field(default_factory=lambda: list(DEFAULT_HOSTS))
     # Estado apenas em memória (não salva): engine ligado/desligado
     enabled: bool = False
 
 
 def load(path: Path = CONFIG_PATH) -> Config:
     """Carrega config.local.json se existir, senão defaults."""
+    cfg = Config()
     if path.exists():
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-            cfg = Config()
             for k in ("proxy_port", "doh_provider", "theme", "upstream_enabled"):
                 if k in data:
                     setattr(cfg, k, data[k])
-            return cfg
+            if isinstance(data.get("test_hosts"), list):
+                hosts = [str(h).strip() for h in data["test_hosts"] if str(h).strip()]
+                if hosts:
+                    cfg.test_hosts = hosts[:20]  # limite p/ não virar bagunça
         except (OSError, ValueError):
             return Config()
-    return Config()
+    return cfg
 
 
 def save(cfg: Config, path: Path = CONFIG_PATH) -> None:
