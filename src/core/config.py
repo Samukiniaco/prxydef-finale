@@ -19,6 +19,7 @@ class Config:
     theme: str = "dark"
     upstream_enabled: bool = False
     test_hosts: list[str] = field(default_factory=lambda: list(DEFAULT_HOSTS))
+    apply_sysproxy: bool = True  # aplicar PAC no proxy do sistema ao ligar
     # Estado apenas em memória (não salva): engine ligado/desligado
     enabled: bool = False
 
@@ -29,7 +30,7 @@ def load(path: Path = CONFIG_PATH) -> Config:
     if path.exists():
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-            for k in ("proxy_port", "doh_provider", "theme", "upstream_enabled"):
+            for k in ("proxy_port", "doh_provider", "theme", "upstream_enabled", "apply_sysproxy"):
                 if k in data:
                     setattr(cfg, k, data[k])
             if isinstance(data.get("test_hosts"), list):

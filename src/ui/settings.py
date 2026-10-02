@@ -46,6 +46,9 @@ class SettingsWidget(QWidget):
         self.upstream = QCheckBox("Upstream (proxies/Tor) — desligado = mais rápido")
         self.upstream.setChecked(cfg.upstream_enabled)
         f.addRow(self.upstream)
+        self.sysproxy = QCheckBox("Aplicar PAC no proxy do sistema ao ligar (só bloqueados passam pelo engine)")
+        self.sysproxy.setChecked(cfg.apply_sysproxy)
+        f.addRow(self.sysproxy)
         layout.addWidget(g)
 
         t = QGroupBox("Aparência")
@@ -123,6 +126,7 @@ class SettingsWidget(QWidget):
         self._cfg.proxy_port = int(self.port.value())
         self._cfg.doh_provider = self.doh.currentText()
         self._cfg.upstream_enabled = self.upstream.isChecked()
+        self._cfg.apply_sysproxy = self.sysproxy.isChecked()
         self._cfg.theme = name
         self._on_save()
         self.msg.setText("Salvo! Tema aplicado em tempo real.")

@@ -44,28 +44,37 @@ class MainWindow(QMainWindow):
 
         self.apply_current_theme()
 
-    # --- engine real: proxy local liga/desliga ---
+    # --- engine real: proxy local + PAC no sistema ---
     def toggle(self) -> None:
-        """Liga/desliga proxy local de verdade."""
+        """Liga/desliga proteção (proxy local + PAC no sistema, restaura ao sair)."""
         from core import proxy_local
+        from core import pac as pac_mod
+        from core import sysproxy
 
         if self.cfg.enabled:
+            sysproxy.restore()
             proxy_local.stop()
             self.cfg.enabled = False
         else:
             try:
                 proxy_local.start(self.cfg.proxy_port)
                 self.cfg.enabled = True
+                if self.cfg.apply_sysproxy:
+                    pac_path = pac_mod.write_pac(self.cfg.proxy_port, self.cfg.test_hosts)
+                    sysproxy.apply_pac(pac_path.as_uri())
             except OSError as e:
                 log.error("proxy não subiu: %s", e)
 
     def dashboard_status(self) -> dict:
         """Dict completo pro painel principal."""
         from core import proxy_local
+        from core import sysproxy
 
         on = bool(self.cfg.enabled and proxy_local.running())
+        sys_on = bool(sysproxy.current_pac())
         detail = (
             f"127.0.0.1:{self.cfg.proxy_port} • DoH {self.cfg.doh_provider}"
+            + (" • PAC no sistema" if sys_on else "")
             if on else
             f"Pronto — porta {self.cfg.proxy_port}, tema {self.cfg.theme}. Aperte Ligar."
         )
@@ -74,7 +83,7 @@ class MainWindow(QMainWindow):
             "detail": detail,
             "proxy": f"127.0.0.1:{self.cfg.proxy_port}\n{'ATIVO' if on else 'parado'}",
             "dns": f"DoH: {self.cfg.doh_provider}\nCache local 2min",
-            "mode": "PAC: só bloqueado\npassa pelo engine",
+            "mode": "PAC: só bloqueado\npassa pelo engine" + (" (sistema)" if sys_on else ""),
             "upstream": "ON (fallback)" if self.cfg.upstream_enabled else "OFF (mais rápido)",
         }
 
@@ -103,10 +112,11 @@ class MainWindow(QMainWindow):
             self.apply_current_theme()
 
     def closeEvent(self, event) -> None:  # noqa: N802
-        """Garante proxy parado ao fechar."""
+        """Garante proxy parado + sistema restaurado ao fechar."""
         try:
-            from core import proxy_local
+            from core import proxy_local, sysproxy
 
+            sysproxy.restore()
             proxy_local.stop()
         finally:
             super().closeEvent(event)

@@ -19,6 +19,7 @@ dist/
 
 # Config local do usuário (temas pessoais, etc - manter exemplos versionados, resto local)
 config.local.json
+proxy.pac
 themes/custom_*.json
 
 # OS / IDE
