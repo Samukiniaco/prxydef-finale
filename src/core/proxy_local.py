@@ -16,6 +16,7 @@ _loop: asyncio.AbstractEventLoop | None = None
 _thread: threading.Thread | None = None
 _server: asyncio.AbstractServer | None = None
 _running_port: int | None = None
+_last_error: str | None = None
 _lock = threading.Lock()
 
 # Texto do PAC servido em http://127.0.0.1:porta/proxy.pac (navegadores
@@ -213,37 +214,58 @@ async def _handle(client_r: asyncio.StreamReader, client_w: asyncio.StreamWriter
                     pass
 
 
-async def _serve(port: int) -> None:
+async def _serve(port: int, pronto: threading.Event, falha: dict) -> None:
     global _server
-    _server = await asyncio.start_server(_handle, "127.0.0.1", port)
+    try:
+        _server = await asyncio.start_server(_handle, "127.0.0.1", port)
+    except OSError as e:
+        falha["erro"] = f"porta {port} em uso ou bloqueada ({e})"
+        pronto.set()
+        return
     log.info("proxy local em 127.0.0.1:%s", port)
+    pronto.set()
     async with _server:
         await _server.serve_forever()
 
 
-def start(port: int = 8899) -> None:
-    """Sobe proxy em thread daemon (bloqueia só a thread)."""
-    global _loop, _thread, _running_port
+def start(port: int = 8899) -> bool:
+    """Sobe proxy em thread daemon. Retorna True se amarrou a porta."""
+    global _loop, _thread, _running_port, _last_error
     with _lock:
         if _thread is not None and _thread.is_alive():
             if _running_port == port:
-                return
+                return True
             stop()
+        _last_error = None
         loop = asyncio.new_event_loop()
         _loop = loop
         _running_port = port
+        pronto = threading.Event()
+        falha: dict = {}
 
         def _run() -> None:
             asyncio.set_event_loop(loop)
             try:
-                loop.run_until_complete(_serve(port))
-            except OSError as e:
-                log.error("proxy não subiu na porta %s: %s", port, e)
+                loop.run_until_complete(_serve(port, pronto, falha))
             except (RuntimeError, asyncio.CancelledError):
                 pass
+            except OSError as e:
+                falha["erro"] = str(e)
+                pronto.set()
 
         _thread = threading.Thread(target=_run, daemon=True, name="proxy-local")
         _thread.start()
+    ok = pronto.wait(timeout=5.0)
+    with _lock:
+        if not ok or "erro" in falha:
+            _last_error = falha.get("erro") or "tempo esgotado ao amarrar a porta"
+            log.error("proxy não subiu: %s", _last_error)
+            _thread = None
+            _loop = None
+            _server = None
+            _running_port = None
+            return False
+        return True
 
 
 def stop() -> None:
@@ -264,6 +286,11 @@ def stop() -> None:
 def running() -> bool:
     """True se thread do proxy está viva."""
     return _thread is not None and _thread.is_alive()
+
+
+def last_error() -> str | None:
+    """Último erro de bind, se houve."""
+    return _last_error
 
 
 def port() -> int | None:

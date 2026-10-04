@@ -76,6 +76,9 @@ def apply_pac(pac_file_url: str) -> bool:
     key = _win_key(create=True)
     try:
         winreg.SetValueEx(key, "AutoConfigURL", 0, winreg.REG_SZ, pac_file_url)
+        # Proxy manual LIGADO junto com PAC confunde o navegador (ex: resto de
+        # VPN que falhou). Desligamos o manual; o backup acima restaura depois.
+        winreg.SetValueEx(key, "ProxyEnable", 0, winreg.REG_DWORD, 0)
     finally:
         key.Close()
     _notify_windows()
@@ -99,6 +102,18 @@ def restore() -> bool:
                 winreg.DeleteValue(key, "AutoConfigURL")
             except OSError:
                 pass
+        # Restaura o proxy manual exatamente como estava (ou desliga se não havia).
+        if _saved is not None:
+            winreg.SetValueEx(key, "ProxyEnable", 0, winreg.REG_DWORD, int(_saved.proxy_enable or 0))
+            if _saved.proxy_server:
+                winreg.SetValueEx(key, "ProxyServer", 0, winreg.REG_SZ, _saved.proxy_server)
+            else:
+                try:
+                    winreg.DeleteValue(key, "ProxyServer")
+                except OSError:
+                    pass
+            if _saved.proxy_override:
+                winreg.SetValueEx(key, "ProxyOverride", 0, winreg.REG_SZ, _saved.proxy_override)
     finally:
         key.Close()
         _saved = None
@@ -114,6 +129,17 @@ def current_pac() -> str | None:
     key = _win_key()
     try:
         return _read(key, "AutoConfigURL")
+    finally:
+        key.Close()
+
+
+def manual_proxy() -> tuple[int, str | None]:
+    """Retorna (ProxyEnable, ProxyServer) atual. Para o auto-diagnóstico."""
+    if sys.platform != "win32":
+        return 0, None
+    key = _win_key()
+    try:
+        return int(_read(key, "ProxyEnable") or 0), _read(key, "ProxyServer")
     finally:
         key.Close()
 

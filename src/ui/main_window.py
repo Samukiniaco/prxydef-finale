@@ -21,6 +21,7 @@ class MainWindow(QMainWindow):
     def __init__(self, cfg: Config) -> None:
         super().__init__()
         self.cfg = cfg
+        self.cfg_error: str | None = None
         self.setWindowTitle("Finale PrxyDef")
         self.resize(920, 660)
 
@@ -60,17 +61,19 @@ class MainWindow(QMainWindow):
             proxy_local.set_pac(None)
             proxy_local.stop()
             self.cfg.enabled = False
+            self.cfg_error = None
         else:
-            try:
-                proxy_local.start(self.cfg.proxy_port)
-                self.cfg.enabled = True
-                if self.cfg.apply_sysproxy:
-                    texto = pac_mod.generate_pac(self.cfg.proxy_port, self.cfg.test_hosts)
-                    proxy_local.set_pac(texto)
-                    pac_mod.write_pac(self.cfg.proxy_port, self.cfg.test_hosts)  # backup
-                    sysproxy.apply_pac(f"http://127.0.0.1:{self.cfg.proxy_port}/proxy.pac")
-            except OSError as e:
-                log.error("proxy não subiu: %s", e)
+            self.cfg_error = None
+            if not proxy_local.start(self.cfg.proxy_port):
+                self.cfg_error = proxy_local.last_error() or "proxy não subiu"
+                log.error("proxy não subiu: %s", self.cfg_error)
+                return
+            self.cfg.enabled = True
+            if self.cfg.apply_sysproxy:
+                texto = pac_mod.generate_pac(self.cfg.proxy_port, self.cfg.test_hosts)
+                proxy_local.set_pac(texto)
+                pac_mod.write_pac(self.cfg.proxy_port, self.cfg.test_hosts)  # backup
+                sysproxy.apply_pac(f"http://127.0.0.1:{self.cfg.proxy_port}/proxy.pac")
 
     def dashboard_status(self) -> dict:
         """Dict completo pro painel principal."""
@@ -79,12 +82,15 @@ class MainWindow(QMainWindow):
 
         on = bool(self.cfg.enabled and proxy_local.running())
         sys_on = bool(sysproxy.current_pac())
-        detail = (
-            f"127.0.0.1:{self.cfg.proxy_port} • DoH {self.cfg.doh_provider}"
-            + (" • PAC no sistema" if sys_on else "")
-            if on else
-            f"Pronto — porta {self.cfg.proxy_port}, tema {self.cfg.theme}. Aperte Ligar."
-        )
+        if self.cfg_error and not on:
+            detail = f"NÃO LIGOU: {self.cfg_error}. Feche outra cópia do app e tente de novo."
+        else:
+            detail = (
+                f"127.0.0.1:{self.cfg.proxy_port} • DoH {self.cfg.doh_provider}"
+                + (" • PAC no sistema" if sys_on else "")
+                if on else
+                f"Pronto — porta {self.cfg.proxy_port}, tema {self.cfg.theme}. Aperte Ligar."
+            )
         return {
             "enabled": on,
             "detail": detail,

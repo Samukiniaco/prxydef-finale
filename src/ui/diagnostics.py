@@ -90,6 +90,13 @@ class DiagnosticsWidget(QWidget):
         pl.addWidget(b_speed)
         layout.addWidget(p)
 
+        e = QGroupBox("Raio-X (acha onde a corrente quebra)")
+        el = QHBoxLayout(e)
+        b_x = QPushButton("Verificar proteção de ponta a ponta")
+        b_x.clicked.connect(self._xray)
+        el.addWidget(b_x)
+        layout.addWidget(e)
+
         self.log = QTextEdit()
         self.log.setReadOnly(True)
         layout.addWidget(self.log)
@@ -142,6 +149,51 @@ class DiagnosticsWidget(QWidget):
             host = h.split("/")[0].split(":")[0]
             ok, det = check_host(host, port)
             self.log.append(f"{h}: {'OK' if ok else 'BLOQUEADO/TIMEOUT'} ({det})")
+
+    def _xray(self) -> None:
+        """Verifica cada elo: proxy ouvindo, PAC no sistema, PAC baixável, site via proxy."""
+        import httpx
+
+        from core import proxy_local, sysproxy
+
+        self.log.append("== Raio-X da proteção ==")
+        ok = lambda c, bom, ruim: self.log.append(f"{'OK' if c else 'FALHA'}: {bom if c else ruim}")
+
+        ouvindo = False
+        try:
+            with socket.create_connection(("127.0.0.1", self._cfg.proxy_port), timeout=2):
+                ouvindo = True
+        except OSError:
+            pass
+        ok(ouvindo, f"proxy ouvindo em 127.0.0.1:{self._cfg.proxy_port}",
+           "proxy NÃO está ouvindo — aperte Ligar no Painel")
+
+        esperado = f"http://127.0.0.1:{self._cfg.proxy_port}/proxy.pac"
+        atual = sysproxy.current_pac()
+        ok(atual == esperado, f"Windows apontando pro nosso PAC",
+           f"PAC do sistema = {atual!r} (esperado {esperado!r}) — aperte Ligar de novo")
+
+        man_on, man_srv = sysproxy.manual_proxy()
+        ok(not man_on, "sem proxy manual competindo",
+           f"há proxy MANUAL ativo ({man_srv}) — resto de VPN? Desligar+ligar a proteção resolve")
+
+        baixou = False
+        if ouvindo:
+            try:
+                r = httpx.get(esperado, timeout=5.0)
+                baixou = r.status_code == 200 and "FindProxyForURL" in r.text
+            except Exception:
+                pass
+        ok(baixou, "PAC baixável pelo navegador",
+           "navegador não consegue baixar o PAC — firewall local bloqueando 127.0.0.1?")
+
+        passou = False
+        if self._cfg.enabled and proxy_local.running() and self.hosts():
+            from core.speedtest import fetch_ms
+
+            passou = fetch_ms(self.hosts()[0], self._cfg.proxy_port, timeout=8.0) is not None
+        ok(passou, f"site ({self.hosts()[0] if self.hosts() else '?'}) abre ATRAVÉS da proteção",
+           "site não abre nem pela proteção — veja o teste 'ATRAVÉS da proteção' p/ detalhes")
 
     def _via(self) -> None:
         """Baixa cada site passando pela proteção. Mostra DESBLOQUEADO ou não."""
