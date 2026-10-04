@@ -24,6 +24,28 @@ def is_tls_client_hello(data: bytes) -> bool:
     return len(data) > 5 and data[0] == 0x16 and data[1] == 0x03
 
 
+async def _connect(host: str, port: int) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+    """Conecta no destino. Se o DNS do sistema falhar (ex: bloqueio),
+    tenta o IP via DoH antes de desistir."""
+    try:
+        return await asyncio.open_connection(host, port)
+    except OSError:
+        pass
+    try:
+        from .dns_doh import resolve
+
+        ips = await asyncio.to_thread(resolve, host)
+    except Exception as e:
+        log.debug("DoH fallback falhou p/ %s: %s", host, e)
+        ips = []
+    for ip in ips:
+        try:
+            return await asyncio.open_connection(ip, port)
+        except OSError:
+            continue
+    raise OSError(f"sem rota para {host}:{port}")
+
+
 async def _pipe(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
     try:
         while True:
@@ -100,7 +122,7 @@ async def _handle(client_r: asyncio.StreamReader, client_w: asyncio.StreamWriter
         return
     host, port = target
     try:
-        remote_r, remote_w = await asyncio.open_connection(host, port)
+        remote_r, remote_w = await _connect(host, port)
     except OSError:
         try:
             client_w.write(b"HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n")
