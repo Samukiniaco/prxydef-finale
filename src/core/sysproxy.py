@@ -116,3 +116,29 @@ def current_pac() -> str | None:
         return _read(key, "AutoConfigURL")
     finally:
         key.Close()
+
+
+def cleanup_stale() -> bool:
+    """Remove PAC apontando pro nosso proxy.pac se ele não está rodando.
+
+    Cura restos de versões antigas (ex: PAC em file:// que o navegador ignora).
+    Só mexe se a URL contiver 'proxy.pac'. Retorna True se limpou.
+    """
+    if sys.platform != "win32":
+        return False
+    import winreg
+
+    atual = current_pac()
+    if not atual or "proxy.pac" not in atual:
+        return False
+    key = _win_key(create=True)
+    try:
+        try:
+            winreg.DeleteValue(key, "AutoConfigURL")
+        except OSError:
+            return False
+    finally:
+        key.Close()
+    _notify_windows()
+    log.info("PAC obsoleto removido: %s", atual)
+    return True

@@ -18,6 +18,16 @@ _server: asyncio.AbstractServer | None = None
 _running_port: int | None = None
 _lock = threading.Lock()
 
+# Texto do PAC servido em http://127.0.0.1:porta/proxy.pac (navegadores
+# ignoram PAC em file://, então servimos via HTTP no próprio proxy).
+_pac_text: str | None = None
+
+
+def set_pac(text: str | None) -> None:
+    """Define o PAC servido via HTTP (None desliga)."""
+    global _pac_text
+    _pac_text = text
+
 
 def is_tls_client_hello(data: bytes) -> bool:
     """Heurística mínima: record TLS handshake (0x16 0x03 ...)."""
@@ -121,6 +131,24 @@ async def _handle(client_r: asyncio.StreamReader, client_w: asyncio.StreamWriter
         client_w.close()
         return
     host, port = target
+    method = lines[0].split()[0].upper() if lines and lines[0] else ""
+    # PAC via HTTP: só serve pra quem chama o próprio proxy (127.0.0.1).
+    req_target = lines[0].split()[1] if len(lines[0].split()) > 1 else "/"
+    if (
+        method == "GET"
+        and _pac_text is not None
+        and host in ("127.0.0.1", "localhost")
+        and req_target.split("?")[0] in ("/proxy.pac", "/wpad.dat")
+    ):
+        body = _pac_text.encode("utf-8")
+        head = (
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/x-ns-proxy-autoconfig\r\n"
+            b"Content-Length: " + str(len(body)).encode() + b"\r\n\r\n"
+        )
+        client_w.write(head + body)
+        await client_w.drain()
+        client_w.close()
+        return
     try:
         remote_r, remote_w = await _connect(host, port)
     except OSError:
@@ -130,7 +158,6 @@ async def _handle(client_r: asyncio.StreamReader, client_w: asyncio.StreamWriter
         finally:
             client_w.close()
         return
-    method = lines[0].split()[0].upper() if lines and lines[0] else ""
     try:
         if method == "CONNECT":
             client_w.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")

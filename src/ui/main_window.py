@@ -42,6 +42,10 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.settings, "Config")
         self.tabs.addTab(self.diag, "Diagnóstico")
 
+        from core import sysproxy as _sp
+
+        if _sp.cleanup_stale():
+            self.cfg.enabled = False
         self.apply_current_theme()
 
     # --- engine real: proxy local + PAC no sistema ---
@@ -53,6 +57,7 @@ class MainWindow(QMainWindow):
 
         if self.cfg.enabled:
             sysproxy.restore()
+            proxy_local.set_pac(None)
             proxy_local.stop()
             self.cfg.enabled = False
         else:
@@ -60,8 +65,10 @@ class MainWindow(QMainWindow):
                 proxy_local.start(self.cfg.proxy_port)
                 self.cfg.enabled = True
                 if self.cfg.apply_sysproxy:
-                    pac_path = pac_mod.write_pac(self.cfg.proxy_port, self.cfg.test_hosts)
-                    sysproxy.apply_pac(pac_path.as_uri())
+                    texto = pac_mod.generate_pac(self.cfg.proxy_port, self.cfg.test_hosts)
+                    proxy_local.set_pac(texto)
+                    pac_mod.write_pac(self.cfg.proxy_port, self.cfg.test_hosts)  # backup
+                    sysproxy.apply_pac(f"http://127.0.0.1:{self.cfg.proxy_port}/proxy.pac")
             except OSError as e:
                 log.error("proxy não subiu: %s", e)
 
