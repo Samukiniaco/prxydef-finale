@@ -194,6 +194,7 @@ class DiagnosticsWidget(QWidget):
             passou = fetch_ms(self.hosts()[0], self._cfg.proxy_port, timeout=8.0) is not None
         ok(passou, f"site ({self.hosts()[0] if self.hosts() else '?'}) abre ATRAVÉS da proteção",
            "site não abre nem pela proteção — veja o teste 'ATRAVÉS da proteção' p/ detalhes")
+        self.log.append("Dica: Chrome aberto ANTES de Ligar guarda a config velha — feche ele todo e abra de novo.")
 
     def _via(self) -> None:
         """Baixa cada site passando pela proteção. Mostra DESBLOQUEADO ou não."""

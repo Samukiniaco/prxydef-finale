@@ -35,24 +35,64 @@ def is_tls_client_hello(data: bytes) -> bool:
     return len(data) > 5 and data[0] == 0x16 and data[1] == 0x03
 
 
-async def _connect(host: str, port: int) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
-    """Conecta no destino. Se o DNS do sistema falhar (ex: bloqueio),
-    tenta o IP via DoH antes de desistir."""
+def _ipv4_primeiro(ips: list[str]) -> list[str]:
+    """IPv4 antes de IPv6 (IPv6 sem rota pendura a conexão por ~20s)."""
+    def chave(ip: str) -> int:
+        return 0 if "." in ip and ":" not in ip else 1
+    return sorted(ips, key=chave)
+
+
+async def _liga(ip: str, port: int, timeout: float = 8.0):
+    """Uma tentativa de conexão com teto de tempo."""
+    return await asyncio.wait_for(asyncio.open_connection(ip, port), timeout)
+
+
+def _is_loopback_ip(ip: str) -> bool:
+    """Diz se o IP é loopback (127.x / ::1)."""
     try:
-        return await asyncio.open_connection(host, port)
+        import ipaddress
+
+        return ipaddress.ip_address(ip.split("%")[0]).is_loopback
+    except ValueError:
+        return False
+
+
+async def _connect(host: str, port: int) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+    """Conecta no destino, preferindo IP público.
+
+    Ordem: DNS do sistema (se der IP público) -> DoH -> loopback local.
+    Isso fura tanto o bloqueio por hosts (DNS falha ou aponta p/ 127.0.0.1)
+    quanto preserva dev local (localhost continua funcionando por último).
+    """
+    loop = asyncio.get_running_loop()
+    try:
+        infos = await loop.getaddrinfo(host, port, family=0, type=0, proto=0, flags=0)
+        ips_sistema = [i[4][0] for i in infos]
     except OSError:
-        pass
+        ips_sistema = []
+    publicos = [ip for ip in ips_sistema if not _is_loopback_ip(ip)]
+    locais = [ip for ip in ips_sistema if _is_loopback_ip(ip)]
+    if ips_sistema and not publicos:
+        log.debug("%s só resolve p/ loopback %s (bloqueio?) — tentando DoH", host, ips_sistema)
+    for ip in _ipv4_primeiro(publicos):
+        try:
+            return await _liga(ip, port)
+        except (OSError, asyncio.TimeoutError):
+            continue
     try:
         from .dns_doh import resolve
 
-        ips = await asyncio.to_thread(resolve, host)
+        for ip in _ipv4_primeiro(await asyncio.to_thread(resolve, host)):
+            try:
+                return await _liga(ip, port)
+            except (OSError, asyncio.TimeoutError):
+                continue
     except Exception as e:
         log.debug("DoH fallback falhou p/ %s: %s", host, e)
-        ips = []
-    for ip in ips:
+    for ip in _ipv4_primeiro(locais):
         try:
-            return await asyncio.open_connection(ip, port)
-        except OSError:
+            return await _liga(ip, port)
+        except (OSError, asyncio.TimeoutError):
             continue
     raise OSError(f"sem rota para {host}:{port}")
 
