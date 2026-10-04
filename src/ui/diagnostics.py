@@ -79,6 +79,17 @@ class DiagnosticsWidget(QWidget):
         tl.addWidget(b_clear)
         layout.addWidget(t)
 
+        p = QGroupBox("Com a proteção LIGADA")
+        pl = QHBoxLayout(p)
+        b_via = QPushButton("Testar sites ATRAVÉS da proteção")
+        b_via.setProperty("class", "primary")
+        b_via.clicked.connect(self._via)
+        b_speed = QPushButton("Medir velocidade (direto vs protegido)")
+        b_speed.clicked.connect(self._speed)
+        pl.addWidget(b_via)
+        pl.addWidget(b_speed)
+        layout.addWidget(p)
+
         self.log = QTextEdit()
         self.log.setReadOnly(True)
         layout.addWidget(self.log)
@@ -131,3 +142,36 @@ class DiagnosticsWidget(QWidget):
             host = h.split("/")[0].split(":")[0]
             ok, det = check_host(host, port)
             self.log.append(f"{h}: {'OK' if ok else 'BLOQUEADO/TIMEOUT'} ({det})")
+
+    def _via(self) -> None:
+        """Baixa cada site passando pela proteção. Mostra DESBLOQUEADO ou não."""
+        from core import proxy_local
+        from core.speedtest import fetch_ms
+
+        if not (self._cfg.enabled and proxy_local.running()):
+            self.log.append("Ligue a proteção no Painel primeiro!")
+            return
+        self.log.append(f"== Através da proteção (127.0.0.1:{self._cfg.proxy_port}) ==")
+        for h in self.hosts():
+            ms = fetch_ms(h, self._cfg.proxy_port)
+            if ms is None:
+                self.log.append(f"{h}: AINDA BLOQUEADO (não abriu nem pela proteção)")
+            else:
+                self.log.append(f"{h}: DESBLOQUEADO! abriu em {ms:.0f}ms")
+
+    def _speed(self) -> None:
+        """Compara direto vs protegido pra provar que não fica lento."""
+        from core import proxy_local
+        from core.speedtest import compare
+
+        port = self._cfg.proxy_port if (self._cfg.enabled and proxy_local.running()) else None
+        self.log.append("== Velocidade: direto x protegido ==")
+        for h in self.hosts()[:5]:
+            r = compare(h, port)
+            d, v = r["direto_ms"], r["protegido_ms"]
+            td = f"{d:.0f}ms" if d else "falhou"
+            tv = f"{v:.0f}ms" if v else ("desligada" if port is None else "falhou")
+            extra = ""
+            if r["perda_pct"] is not None:
+                extra = f" (diferença {r['perda_pct']:+.0f}%)"
+            self.log.append(f"{h}: direto {td} | protegido {tv}{extra}")
